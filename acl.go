@@ -3,8 +3,8 @@
 // See the acl manpage for details: http://linux.die.net/man/5/acl
 package main
 
+// #include <sys/types.h>
 // #include <sys/acl.h>
-// #include <acl/libacl.h>
 // #include <stdlib.h>
 // #cgo linux LDFLAGS: -lacl
 //
@@ -120,28 +120,6 @@ func (e Entry) String() string {
 		toPrint = entry{e.Tag, aclPerm(e.Perm)}
 	}
 	return fmt.Sprint(toPrint)
-}
-
-func aclCToGo(cacl C.acl_t) (ACL, error) {
-	acl := make(ACL, 0)
-	for {
-		var centry C.acl_entry_t
-		code, err := C.acl_get_entry(cacl, C.ACL_NEXT_ENTRY, &centry)
-		// C.acl_get_entry returns 1 on success,
-		// 0 when the list is exhausted, and < 0
-		// on error (see libacl/acl_get_entry.c)
-		if code == 0 {
-			break
-		} else if code < 0 {
-			return nil, err
-		}
-		entry, err := entryCToGo(centry)
-		if err != nil {
-			return nil, err
-		}
-		acl = append(acl, entry)
-	}
-	return acl, nil
 }
 
 func entryCToGo(centry C.acl_entry_t) (Entry, error) {
