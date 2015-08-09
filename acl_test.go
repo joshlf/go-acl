@@ -1,9 +1,9 @@
 package acl
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -24,7 +24,23 @@ func mustNotError(t *testing.T, err error) {
 func TestGet(t *testing.T) {
 	f := mustMakeTempFile(t)
 	defer os.Remove(f)
+	_, err := Get(f)
+	mustNotError(t, err)
+}
+
+func TestSet(t *testing.T) {
+	f := mustMakeTempFile(t)
+	defer os.Remove(f)
 	acl, err := Get(f)
 	mustNotError(t, err)
-	fmt.Println(acl)
+	for i := range acl {
+		acl[i].Perms = (^acl[i].Perms) & 0x7 // Flip the rwx bits
+	}
+	err = Set(f, acl)
+	mustNotError(t, err)
+	acl2, err := Get(f)
+	mustNotError(t, err)
+	if !reflect.DeepEqual(acl, acl2) {
+		t.Errorf("unexpected acl: want %v; got %v", acl, acl2)
+	}
 }
