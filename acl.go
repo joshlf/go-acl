@@ -1,20 +1,12 @@
 // Package acl implements POSIX.1e-compliant
 // manipulation of access control lists (ACLs).
 // See the acl manpage for details: http://linux.die.net/man/5/acl
-package main
-
-// #include <sys/types.h>
-// #include <sys/acl.h>
-// #include <stdlib.h>
-// #cgo linux LDFLAGS: -lacl
-//
-// #define ID_T_BITSIZE sizeof(id_t) * 8
-import "C"
+package acl
 
 import (
+	"C"
 	"fmt"
 	"os"
-	"strconv"
 	"unsafe"
 )
 
@@ -35,16 +27,16 @@ import (
 
 type ACL []Entry
 
-type Tag C.acl_tag_t
+type Tag tag
 
 const (
-	TagUndefined Tag = C.ACL_UNDEFINED_TAG
-	TagUserObj       = C.ACL_USER_OBJ  // Permissions of the file owner
-	TagUser          = C.ACL_USER      // Permissions of a specified user
-	TagGroupObj      = C.ACL_GROUP_OBJ // Permissions of the file group
-	TagGroup         = C.ACL_GROUP     // Permissions of a specified group
-	TagMask          = C.ACL_MASK      // Maximum allowed access rights of any entry
-	TagOther         = C.ACL_OTHER     // Permissions of a process not matching any other entry
+	TagUndefined Tag = tagUndefined
+	TagUserObj       = tagUserObj  // Permissions of the file owner
+	TagUser          = tagUser     // Permissions of a specified user
+	TagGroupObj      = tagGroupObj // Permissions of the file group
+	TagGroup         = tagGroup    // Permissions of a specified group
+	TagMask          = tagMask     // Maximum allowed access rights of any entry
+	TagOther         = tagOther    // Permissions of a process not matching any other entry
 )
 
 func (t Tag) String() string {
@@ -64,7 +56,7 @@ func (t Tag) String() string {
 	case TagOther:
 		return "TagOther"
 	default:
-		return fmt.Sprintf("UnknownTag(%v)", C.acl_tag_t(t))
+		return fmt.Sprintf("UnknownTag(%v)", tag(t))
 	}
 }
 
@@ -83,7 +75,7 @@ type Entry struct {
 	// a UID; if the Tag is TagGroup, it is a GID; and otherwise
 	// the field is ignored.
 	Qualifier string
-	Perm      os.FileMode
+	Perms     os.FileMode
 }
 
 // Used for pretty-printing
@@ -111,175 +103,45 @@ func (e Entry) String() string {
 			Qualifier string
 			Perm      aclPerm
 		}
-		toPrint = entry{e.Tag, e.Qualifier, aclPerm(e.Perm)}
+		toPrint = entry{e.Tag, e.Qualifier, aclPerm(e.Perms)}
 	} else {
 		type entry struct {
 			Tag  Tag
 			Perm aclPerm
 		}
-		toPrint = entry{e.Tag, aclPerm(e.Perm)}
+		toPrint = entry{e.Tag, aclPerm(e.Perms)}
 	}
 	return fmt.Sprint(toPrint)
 }
 
-func entryCToGo(centry C.acl_entry_t) (Entry, error) {
-	var entry Entry
-	var tag C.acl_tag_t
-	code, err := C.acl_get_tag_type(centry, &tag)
+func Get(path string) (ACL, error) {
+	return get(path)
+}
+
+func GetDefault(path string) (ACL, error) {
+	return getDefault(path)
+}
+
+func Set(path string, acl ACL) error {
+	return set(path, acl)
+}
+
+func SetDefault(path string, acl ACL) error {
+	return setDefault(path, acl)
+}
+
+// ci == check int; calls panic(err)
+// if code < 0
+func ci(code C.int, err error) {
 	if code < 0 {
-		return Entry{}, err
+		panic(err)
 	}
-	entry.Tag = Tag(tag)
-
-	var perms C.acl_permset_t
-	code, err = C.acl_get_permset(centry, &perms)
-	if code < 0 {
-		return Entry{}, err
-	}
-
-	entry.Perm, err = permCToGo(perms)
-	if err != nil {
-		return Entry{}, err
-	}
-
-	if entry.Tag == TagUser || entry.Tag == TagGroup {
-		var id C.id_t
-		id_ptr, err := C.acl_get_qualifier(centry)
-		if id_ptr == nil {
-			return Entry{}, err
-		}
-		id = *(*C.id_t)(id_ptr)
-		entry.Qualifier = fmt.Sprint(id)
-	}
-
-	return entry, nil
 }
 
-func aclGoToC(acl ACL) (cacl C.acl_t, err error) {
-	// C.acl_init takes a prediction of
-	// how many entries there will be
-	cacl, err = C.acl_init(C.int(len(acl)))
-	if cacl == nil {
-		return
-	}
-	defer func() {
-		if err != nil {
-			C.acl_free(unsafe.Pointer(cacl))
-		}
-	}()
-	for _, entry := range acl {
-		err = addEntryGoToC(entry, cacl)
-		if err != nil {
-			return
-		}
-	}
-	return
-}
-
-// addEntryGoToC will not free any memory,
-// even if there is an error. However, any
-// allocated memory should be associated
-// with cacl, so as long as cacl is freed
-// regardless of this function's error value,
-// no memory should be leaked.
-func addEntryGoToC(entry Entry, cacl C.acl_t) error {
-	var centry C.acl_entry_t
-	code, err := C.acl_create_entry(&cacl, &centry)
-	if code < 0 {
-		return err
-	}
-	code, err = C.acl_set_tag_type(centry, C.acl_tag_t(entry.Tag))
-	if code < 0 {
-		return err
-	}
-	var perms C.acl_permset_t
-	code, err = C.acl_get_permset(centry, &perms)
-	if code < 0 {
-		return err
-	}
-	if entry.Perm&4 != 0 {
-		code, err = C.acl_add_perm(perms, C.ACL_READ)
-		if code < 0 {
-			return err
-		}
-	}
-	if entry.Perm&2 != 0 {
-		code, err = C.acl_add_perm(perms, C.ACL_WRITE)
-		if code < 0 {
-			return err
-		}
-	}
-	if entry.Perm&1 != 0 {
-		code, err = C.acl_add_perm(perms, C.ACL_EXECUTE)
-		if code < 0 {
-			return err
-		}
-	}
-
-	if entry.Tag == TagUser || entry.Tag == TagGroup {
-		n, err := strconv.ParseUint(entry.Qualifier, 10, C.ID_T_BITSIZE)
-		if err != nil {
-			return fmt.Errorf("parse qualifier: %v", err)
-		}
-		id := C.id_t(n)
-		code, err = C.acl_set_qualifier(centry, unsafe.Pointer(&id))
-		if code < 0 {
-			return err
-		}
-	}
-	return nil
-}
-
-func getFile(path string, typ C.acl_type_t) (ACL, error) {
-	cpath := C.CString(path)
-	defer C.free(unsafe.Pointer(cpath))
-	cacl, err := C.acl_get_file(cpath, typ)
-	defer C.acl_free(unsafe.Pointer(cacl))
-	if cacl == nil {
-		return nil, fmt.Errorf("get acls on %v: %v", path, err)
-	}
-	acl, err := aclCToGo(cacl)
-	if err != nil {
-		return nil, fmt.Errorf("get acls on %v: %v", path, err)
-	}
-	return acl, nil
-}
-
-func setFile(path string, acl ACL, typ C.acl_type_t) error {
-	cpath := C.CString(path)
-	defer C.free(unsafe.Pointer(cpath))
-	cacl, err := aclGoToC(acl)
-	if err != nil {
-		return fmt.Errorf("set acls on %v: %v", path, err)
-	}
-	defer C.acl_free(unsafe.Pointer(cacl))
-	code, err := C.acl_set_file(cpath, typ, cacl)
-	if code < 0 {
-		return fmt.Errorf("set acls on %v: %v", path, err)
-	}
-	return nil
-}
-
-func GetFile(path string) (ACL, error) {
-	return getFile(path, C.ACL_TYPE_ACCESS)
-}
-
-func GetFileDefault(path string) (ACL, error) {
-	return getFile(path, C.ACL_TYPE_DEFAULT)
-}
-
-func SetFile(path string, acl ACL) error {
-	return setFile(path, acl, C.ACL_TYPE_ACCESS)
-}
-
-func SetFileDefault(path string, acl ACL) error {
-	return setFile(path, acl, C.ACL_TYPE_DEFAULT)
-}
-
-func main() {
-	acl, err := GetFile(os.Args[1])
-	fmt.Println(acl, err)
-	if err == nil {
-		fmt.Println(SetFile(os.Args[2], acl))
+// cp == check ptr; calls panic(err)
+// if ptr == nil
+func cp(ptr unsafe.Pointer, err error) {
+	if ptr == nil {
+		panic(err)
 	}
 }
