@@ -1,12 +1,8 @@
-// Package acl implements POSIX.1e-compliant
-// manipulation of access control lists (ACLs).
-// See the acl manpage for details: http://linux.die.net/man/5/acl
 package acl
 
 // #include "include/linux/sys/acl.h"
 // #include "include/linux/acl/libacl.h"
 // #include <stdlib.h>
-// #cgo LDFLAGS: -L${SRCDIR}/lib/linux -lacl
 // #cgo CFLAGS: -I${SRCDIR}/include/linux
 //
 // #define ID_T_BITSIZE sizeof(id_t) * 8
@@ -37,13 +33,12 @@ import (
 type tag C.acl_tag_t
 
 const (
-	tagUndefined Tag = C.ACL_UNDEFINED_TAG
-	tagUserObj       = C.ACL_USER_OBJ  // Permissions of the file owner
-	tagUser          = C.ACL_USER      // Permissions of a specified user
-	tagGroupObj      = C.ACL_GROUP_OBJ // Permissions of the file group
-	tagGroup         = C.ACL_GROUP     // Permissions of a specified group
-	tagMask          = C.ACL_MASK      // Maximum allowed access rights of any entry
-	tagOther         = C.ACL_OTHER     // Permissions of a process not matching any other entry
+	tagUserObj  = C.ACL_USER_OBJ
+	tagUser     = C.ACL_USER
+	tagGroupObj = C.ACL_GROUP_OBJ
+	tagGroup    = C.ACL_GROUP
+	tagMask     = C.ACL_MASK
+	tagOther    = C.ACL_OTHER
 )
 
 func aclCToGo(cacl C.acl_t) (ACL, error) {

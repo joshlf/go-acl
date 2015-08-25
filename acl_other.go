@@ -1,9 +1,24 @@
-// +build !linux
+// +build !linux,!darwin
 
 package acl
 
 import (
 	"syscall"
+)
+
+type tag int
+
+const (
+	// While these aren't actually meaningful,
+	// we still want them to be distinct so they
+	// don't compare as equal
+	tagUndefined Tag = iota
+	tagUserObj
+	tagUser
+	tagGroupObj
+	tagGroup
+	tagMask
+	tagOther
 )
 
 func get(path string) (ACL, error) {
@@ -15,9 +30,9 @@ func getDefault(path string) (ACL, error) {
 }
 
 func set(path string, acl ACL) error {
-	return nil, syscall.ENOTSUP
+	return syscall.ENOTSUP
 }
 
 func setDefault(path string, acl ACL) error {
-	return nil, syscall.ENOTSUP
+	return syscall.ENOTSUP
 }
