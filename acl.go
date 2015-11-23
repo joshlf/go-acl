@@ -7,9 +7,13 @@
 // on some systems. To have it link dynamically,
 // build with the "acl_link_dynamic" tag.
 //
-// NOTE: Some versions of Darwin's libacl have a bug;
-// users compiling for Darwin should be very careful
-// about linking dynamically.
+// Currently, only Linux is supported. On systems which
+// are not supported, all calls will return the error
+// syscall.ENOTSUP.
+//
+// Note that cgo is required. When cross-compiling,
+// cgo cross-compilation support is required, and
+// the environment variable CGO_ENABLED=1 must be set.
 package acl
 
 import (
@@ -19,18 +23,18 @@ import (
 )
 
 /*
-	Note on errno: While cgo can automatically check
-	errno and generate native Go errors, some library
-	calls leave errno set but return non-error return
-	codes. Thus, whenever returns need to be checked,
-	the check should be performed as it would in C -
-	by first checking the actual return value, and only
-	using the error if the return value indicates error
-	(ie, < 0 for signed values and NULL/nil for pointers).
-
 	TODO:
-		- Make ACL's String method use Posix short text
-		  form.
+	  - Currently, the String and StringLong methods
+	    implement the short and long text formats by
+	    using the contents of Entry.Qualifier to specify
+	    entities. Currently, that's a UID or GID. We
+	    might want to consider some way of looking up
+	    the user name or group name that corresponds.
+	    The trouble is that, currently, the Go standard
+	    library only allows user lookups, not group
+	    lookups. The os/user package is guaranteed by
+	    Go to be cross-platform, so that's fine for
+	    user names, but there's no equivalent for groups.
 */
 
 // ACL represents an access control list as defined
@@ -182,7 +186,7 @@ func (t Tag) String() string {
 	case TagMask:
 		return "m"
 	default:
-		// TODO(synful): what to do in this case?
+		// TODO(joshlf): what to do in this case?
 		return "?" // non-standard, but not specified in POSIX.1e
 	}
 }
@@ -199,7 +203,7 @@ func (t Tag) StringLong() string {
 	case TagMask:
 		return "mask"
 	default:
-		// TODO(synful): what to do in this case?
+		// TODO(joshlf): what to do in this case?
 		return "????" // non-standard, but not specified in POSIX.1e
 	}
 }
@@ -208,17 +212,26 @@ func (t Tag) StringLong() string {
 type Entry struct {
 	Tag Tag
 
-	// TODO(synful): are we sure we want to use a string
-	// for this? I'm going off of os/user.User, but maybe
-	// we just want an integer type? I suppose a string
-	// is more cross-platform (that is, assuming we come
-	// across a platform which supports ACLs but uses
-	// non-numeric UIDs and GIDs?)
+	// TODO(joshlf): it would be nice if we could handle
+	// the UID/user name or GID/group name transition
+	// transparently under the hood rather than pushing
+	// the responsibility to the user. However, there are
+	// some subtle considerations:
+	//   - It must be valid to provide a UID/GID for a
+	//     user or group that does not exist (setfactl
+	//     supports this)
+	//   - If the qualifier can be either a UID/GID or
+	//     a user name/group name, there should probably
+	//     be a better way of encoding it (that is,
+	//     better than just setting it to one or the
+	//     other and letting the user implement custom
+	//     logic to tell the difference)
 
 	// The Qualifier specifies what entity (user or group)
 	// this entry applies to. If the Tag is TagUser, it is
 	// a UID; if the Tag is TagGroup, it is a GID; otherwise
-	// the field is ignored.
+	// the field is ignored. Note that the qualifier must
+	// be a UID or GID - it cannot be, for example, a user name.
 	Qualifier string
 
 	// ACL permissions are taken from a traditional rwx

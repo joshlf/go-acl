@@ -2,5 +2,5 @@
 
 package acl
 
-// #cgo LDFLAGS: -L${SRCDIR}/lib/linux/static -lacl
+// #cgo LDFLAGS: -L${SRCDIR}/lib/linux/amd64/static -lgoacl
 import "C"
