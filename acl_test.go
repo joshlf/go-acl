@@ -50,17 +50,17 @@ var (
 	userObj  = Entry{Tag: TagUserObj}
 	groupObj = Entry{Tag: TagGroupObj}
 	other    = Entry{Tag: TagOther}
-	user     = Entry{Tag: TagUser}
+	usr      = Entry{Tag: TagUser} // Don't collide with os/user (imported by other files)
 	group    = Entry{Tag: TagGroup}
 	mask     = Entry{Tag: TagMask}
 )
 
 var validACLs = []ACL{
 	{userObj, groupObj, other},
-	{userObj, groupObj, other, user, mask},
+	{userObj, groupObj, other, usr, mask},
 	{userObj, groupObj, other, group, mask},
-	{userObj, groupObj, other, user, group, mask},
-	{userObj, groupObj, other, user, {Tag: TagUser, Qualifier: " "}, group, {Tag: TagGroup, Qualifier: " "}, mask},
+	{userObj, groupObj, other, usr, group, mask},
+	{userObj, groupObj, other, usr, {Tag: TagUser, Qualifier: " "}, group, {Tag: TagGroup, Qualifier: " "}, mask},
 }
 
 var invalidACLs = []ACL{
@@ -73,11 +73,11 @@ var invalidACLs = []ACL{
 	{groupObj, other},   // No user entry
 
 	{userObj, groupObj, other, {}},                 // Invalid tag type
-	{userObj, groupObj, other, user},               // No mask
+	{userObj, groupObj, other, usr},                // No mask
 	{userObj, groupObj, other, group},              // No mask
-	{userObj, groupObj, other, user, user, mask},   // Duplicate user qualifiers
+	{userObj, groupObj, other, usr, usr, mask},     // Duplicate user qualifiers
 	{userObj, groupObj, other, group, group, mask}, // Duplicate group qualifiers
-	{userObj, groupObj, other, user, mask, mask},   // Duplicate mask entries
+	{userObj, groupObj, other, usr, mask, mask},    // Duplicate mask entries
 }
 
 func TestIsValid(t *testing.T) {
@@ -137,24 +137,20 @@ func ExamplePrint() {
 		{Tag: TagUserObj, Perms: 7},
 		{Tag: TagGroupObj, Perms: 6},
 		{Tag: TagOther, Perms: 5},
-		{Tag: TagUser, Qualifier: "1", Perms: 4},
-		{Tag: TagUser, Qualifier: "2", Perms: 3},
-		{Tag: TagUser, Qualifier: "3", Perms: 2},
-		{Tag: TagGroup, Qualifier: "4", Perms: 1},
-		{Tag: TagGroup, Qualifier: "5", Perms: 0},
-		{Tag: TagMask, Perms: 5},
+		{Tag: TagUser, Qualifier: "0", Perms: 4},
+		{Tag: TagUser, Qualifier: "1", Perms: 3},
+		{Tag: TagGroup, Qualifier: "0", Perms: 2},
+		{Tag: TagMask, Perms: 2},
 	}
 	fmt.Println(acl)
 	fmt.Println(acl.StringLong())
 
-	// Output: u::rwx,g::rw-,o::r-x,u:1:r--,u:2:-wx,u:3:-w-,g:4:--x,g:5:---,m::r-x
+	// Output: u::rwx,g::rw-,o::r-x,u:root:r--,u:daemon:-wx,g:root:-w-,m::-w-
 	// user::rwx
-	// group::rw-          #effective:r--
+	// group::rw-          #effective:-w-
 	// other::r-x
-	// user:1:r--
-	// user:2:-wx          #effective:--x
-	// user:3:-w-          #effective:---
-	// group:4:--x
-	// group:5:---
-	// mask::r-x
+	// user:root:r--       #effective:---
+	// user:daemon:-wx     #effective:-w-
+	// group:root:-w-
+	// mask::-w-
 }

@@ -22,21 +22,6 @@ import (
 	"strings"
 )
 
-/*
-	TODO:
-	  - Currently, the String and StringLong methods
-	    implement the short and long text formats by
-	    using the contents of Entry.Qualifier to specify
-	    entities. Currently, that's a UID or GID. We
-	    might want to consider some way of looking up
-	    the user name or group name that corresponds.
-	    The trouble is that, currently, the Go standard
-	    library only allows user lookups, not group
-	    lookups. The os/user package is guaranteed by
-	    Go to be cross-platform, so that's fine for
-	    user names, but there's no equivalent for groups.
-*/
-
 // ACL represents an access control list as defined
 // in the POSIX.1e draft standard. If an ACL is not
 // valid (see the IsValid method), the behavior of
@@ -267,7 +252,7 @@ func permString(perm os.FileMode) string {
 func (e Entry) String() string {
 	middle := "::"
 	if e.Tag == TagUser || e.Tag == TagGroup {
-		middle = ":" + e.Qualifier + ":"
+		middle = ":" + formatQualifier(e.Qualifier, e.Tag) + ":"
 	}
 	return fmt.Sprintf("%s%s%s", e.Tag, middle, permString(e.perms()))
 }
@@ -276,10 +261,13 @@ func (e Entry) String() string {
 func (e Entry) StringLong() string {
 	middle := "::"
 	if e.Tag == TagUser || e.Tag == TagGroup {
-		middle = ":" + e.Qualifier + ":"
+		middle = ":" + formatQualifier(e.Qualifier, e.Tag) + ":"
 	}
 	return fmt.Sprintf("%s%s%s", e.Tag.StringLong(), middle, permString(e.perms()))
 }
+
+// overwrite in other files to implement platform-specific behavior
+var formatQualifier = func(q string, tag Tag) string { return q }
 
 // Get retrieves the access ACL associated with path,
 // returning any error encountered.

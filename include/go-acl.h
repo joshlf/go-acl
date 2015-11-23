@@ -1,5 +1,5 @@
-#ifndef ACL_IMPL_H
-#define ACL_IMPL_H
+#ifndef GO_ACL_H
+#define GO_ACL_H
 
 typedef enum go_acl_tag_t {
 	TAG_UNDEFINED, // Start with TAG_UNDEFINED so that the Go zero value matches
