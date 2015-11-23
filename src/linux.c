@@ -65,8 +65,6 @@ int go_acl_set_file_impl(char *path, go_acl_t go_acl, acl_type_t type) {
 		free(ids);
 		return -1;
 	}
-	ssize_t size;
-	char *str = acl_to_text(acl, &size);
 	int code = acl_set_file(path, type, acl);
 	acl_free(acl);
 	for (int i = 0; i < go_acl->num_entries; i++) {
