@@ -55,6 +55,13 @@ func ToUnix(a ACL) os.FileMode {
 
 // IsValid returns whether a is a valid ACL as defined
 // by the POSIX.1e draft standard.
+//
+// Specifically, a valid ACL must conform to the following
+// rules:
+//  - it contains exactly one entry each with the tag TagUserObj, TagGroupObj, and TagOther
+//  - it may contain zero or more entries with the tags TagUser or TagGroup
+//  - if it contains any entries with the tag TagUser or TagGroup, it must contain exactly one
+//    entry with the tag TagMask; otherwise, such an entry is optional (there can be zero or one)
 func (a ACL) IsValid() bool {
 	var numUserObj, numGroupObj, numOther int
 	var numMask, numUserOrGroup int
@@ -284,11 +291,17 @@ func GetDefault(path string) (ACL, error) {
 // Set sets the access ACL on path,
 // returning any error encountered.
 func Set(path string, acl ACL) error {
+	if !acl.IsValid() {
+		return fmt.Errorf("invalid ACL")
+	}
 	return set(path, acl)
 }
 
 // SetDefault sets the default ACL on path,
 // returning any error encountered.
 func SetDefault(path string, acl ACL) error {
+	if !acl.IsValid() {
+		return fmt.Errorf("invalid ACL")
+	}
 	return setDefault(path, acl)
 }
