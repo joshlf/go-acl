@@ -137,20 +137,22 @@ func ExamplePrint() {
 		{Tag: TagUserObj, Perms: 7},
 		{Tag: TagGroupObj, Perms: 6},
 		{Tag: TagOther, Perms: 5},
+		// It'd be nice to use different UIDs here, but root
+		// is the only user whose UID is the same on all Unices
 		{Tag: TagUser, Qualifier: "0", Perms: 4},
-		{Tag: TagUser, Qualifier: "1", Perms: 3},
+		{Tag: TagUser, Qualifier: "0", Perms: 3},
 		{Tag: TagGroup, Qualifier: "0", Perms: 2},
 		{Tag: TagMask, Perms: 2},
 	}
 	fmt.Println(acl)
 	fmt.Println(acl.StringLong())
 
-	// Output: u::rwx,g::rw-,o::r-x,u:root:r--,u:daemon:-wx,g:root:-w-,m::-w-
+	// Output: u::rwx,g::rw-,o::r-x,u:root:r--,u:root:-wx,g:root:-w-,m::-w-
 	// user::rwx
 	// group::rw-          #effective:-w-
 	// other::r-x
 	// user:root:r--       #effective:---
-	// user:daemon:-wx     #effective:-w-
+	// user:root:-wx       #effective:-w-
 	// group:root:-w-
 	// mask::-w-
 }
