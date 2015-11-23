@@ -118,7 +118,7 @@ func (a ACL) IsValid() bool {
 
 // String implements the POSIX.1e short text form.
 // For example:
-//  u::rwx,g::r-x,o::--,u:dvader:r--,m::r--
+//  u::rwx,g::r-x,o::---,u:dvader:r--,m::r--
 // This output is produced by an ACL in which the file owner
 // has read, write, and execute; the file group has read and
 // execute; other has no permissions; the user dvader has
