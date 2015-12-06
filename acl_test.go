@@ -3,6 +3,7 @@ package acl
 import (
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"reflect"
 	"testing"
@@ -101,6 +102,8 @@ func TestIsValid(t *testing.T) {
 }
 
 func TestUnix(t *testing.T) {
+	rand.Seed(1676218289)
+
 	aclFromUnix := func(user, group, other os.FileMode) ACL {
 		return ACL{
 			{Tag: TagUserObj, Perms: user},
@@ -126,6 +129,59 @@ func TestUnix(t *testing.T) {
 				}
 				if !reflect.DeepEqual(acltmp, acl) {
 					t.Errorf("unexpected acl: want %v; got %v; perms: %v", acl, acltmp, perms)
+				}
+			}
+		}
+	}
+
+	// Test to make sure that ToUnix can handle ACLs where
+	// the entries are in any order and contain other entries
+	// (besides those of tag UserObj, GroupObj, and Other)
+
+	// Now, aclFromUnix will randomly generate an ACL with
+	// the entries for UserObj, GroupObj, and Other having
+	// the given permissions, but in a random order and with
+	// entries of other tag types interspersed
+	aclFromUnix = func(user, group, other os.FileMode) ACL {
+		var otherTagTypes = []Tag{TagUser, TagGroup, TagMask}
+		extraEntries := int(rand.ExpFloat64())
+
+		// First, make an ACL that starts with the entries
+		// we want and then contains random other entries
+		a := ACL{
+			{Tag: TagUserObj, Perms: user},
+			{Tag: TagGroupObj, Perms: group},
+			{Tag: TagOther, Perms: other},
+		}
+		for i := 0; i < extraEntries; i++ {
+			tag := otherTagTypes[rand.Int()%len(otherTagTypes)]
+			a = append(a, Entry{Tag: tag, Perms: os.FileMode(rand.Uint32()) & 7})
+		}
+
+		// Now permute them in a random order
+		order := rand.Perm(len(a))
+		b := make(ACL, len(a))
+		for i := range b {
+			b[i] = a[order[i]]
+		}
+		return b
+	}
+
+	const rounds = 100
+
+	// Run through every possible unix permissions bitmask
+	// and make sure it is generated with ToUnix and its
+	// accompanying ACL is generated with FromUnix.
+	for user := os.FileMode(0); user < 8; user++ {
+		for group := os.FileMode(0); group < 8; group++ {
+			for other := os.FileMode(0); other < 8; other++ {
+				perms := (user << 6) | (group << 3) | other
+				for i := 0; i < rounds; i++ {
+					acl := aclFromUnix(user, group, other)
+					permstmp := ToUnix(acl)
+					if permstmp != perms {
+						t.Errorf("unexpected perms: want %v; got %v; acl: %v", perms, permstmp, acl)
+					}
 				}
 			}
 		}

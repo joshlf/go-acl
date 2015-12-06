@@ -46,9 +46,15 @@ func FromUnix(perms os.FileMode) ACL {
 // undefined.
 func ToUnix(a ACL) os.FileMode {
 	var perms os.FileMode
-	for i := 0; i < 3 && i < len(a); i++ {
-		perms <<= 3
-		perms |= a[i].perms()
+	for _, e := range a {
+		switch e.Tag {
+		case TagUserObj:
+			perms |= (e.perms() << 6)
+		case TagGroupObj:
+			perms |= (e.perms() << 3)
+		case TagOther:
+			perms |= e.perms()
+		}
 	}
 	return perms
 }
