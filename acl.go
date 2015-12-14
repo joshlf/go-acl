@@ -68,6 +68,7 @@ func ToUnix(a ACL) os.FileMode {
 //  - it may contain zero or more entries with the tags TagUser or TagGroup
 //  - if it contains any entries with the tag TagUser or TagGroup, it must contain exactly one
 //    entry with the tag TagMask; otherwise, such an entry is optional (there can be zero or one)
+//  - all qualifiers must be unique among entries of the same tag type (TagUser or TagGroup)
 func (a ACL) IsValid() bool {
 	var numUserObj, numGroupObj, numOther int
 	var numMask, numUserOrGroup int
