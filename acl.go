@@ -311,3 +311,91 @@ func SetDefault(path string, acl ACL) error {
 	}
 	return setDefault(path, acl)
 }
+
+// Add adds the given entries to the ACL on path.
+// Any matching entries that exist on the file
+// will be overwritten. Two entries match if they
+// have the same tag (and, if that tag is TagUser
+// or TagGroup, they also have the same qualifier).
+//
+// In order to ensure that the new ACL is valid,
+// after being calculated from the old ACL and the
+// new entries, the new ACL is modified as follows:
+// If the ACL includes named user or group entries
+// (with the tags TagUser or TagGroup) but no mask
+// entry, a mask entry is added. This entry's
+// permissions are the union of all permissions
+// affected by the entry (namely, all entries with
+// the tags TagUser or TagGroup).
+func Add(path string, entries ...Entry) error {
+	old, err := get(path)
+	if err != nil {
+		return err
+	}
+
+	var (
+		addUserGroup bool // entries contains TagUser or TagGroup element
+		addMask      bool // entries contains TagMask element
+	)
+	for _, e := range entries {
+		switch e.Tag {
+		case TagUser, TagGroup:
+			addUserGroup = true
+		case TagMask:
+			addMask = true
+		}
+	}
+
+	// put all of the entries into a map: first the
+	// old entries, and then the new ones (so that
+	// new entries overwrite old entries)
+	type key struct {
+		Tag       Tag
+		Qualifier string
+	}
+	m := make(map[key]Entry)
+	for _, e := range old {
+		// we can rely on e.Qualifier to be the
+		// empty string if e.Tag is neither TagUser
+		// nor TagGroup (see the implementation of
+		// get in acl_impl.go)
+		m[key{e.Tag, e.Qualifier}] = e
+	}
+	for _, e := range entries {
+		// the user could have passed an entry
+		// whose Qualifier field was spuriously
+		// non-empty; clean their input in case
+		// this happened
+		tag := e.Tag
+		qual := e.Qualifier
+		if tag != TagUser && tag != TagGroup {
+			qual = ""
+		}
+		m[key{tag, qual}] = e
+	}
+
+	if addUserGroup && !addMask {
+		// automatically add mask entry;
+		// calculate its permissions to
+		// be the union of all TagUser and
+		// TagGroup permissions (see the
+		// doc comment on this function)
+		var mperms os.FileMode
+		for _, e := range m {
+			switch e.Tag {
+			case TagUser, TagGroup:
+				mperms |= e.Perms
+			}
+		}
+		m[key{Tag: TagMask}] = Entry{Tag: TagMask, Perms: mperms}
+	}
+
+	var new ACL
+	for _, e := range m {
+		new = append(new, e)
+	}
+	if !new.IsValid() {
+		return fmt.Errorf("Add results in invalid ACL")
+	}
+	return set(path, new)
+}

@@ -47,6 +47,77 @@ func TestSet(t *testing.T) {
 	}
 }
 
+func TestAdd(t *testing.T) {
+	f := mustMakeTempFile(t)
+	defer os.Remove(f)
+
+	base := ACL{
+		{TagUserObj, "", 7},
+		{TagGroupObj, "", 0},
+		{TagOther, "", 0},
+	}
+
+	testCases := []struct {
+		Before ACL
+		Add    []Entry
+		Afer   ACL
+	}{
+		// Make sure mask is generated
+		{
+			base,
+			[]Entry{{TagUser, "0", 4}, {TagGroup, "0", 2}},
+			append(ACL{{TagUser, "0", 4}, {TagGroup, "0", 2}, {TagMask, "", 6}}, base...),
+		},
+		// Make sure mask is not generated if a mask is supplied
+		{
+			base,
+			[]Entry{{TagUser, "0", 4}, {TagGroup, "0", 2}, {TagMask, "", 1}},
+			append(ACL{{TagUser, "0", 4}, {TagGroup, "0", 2}, {TagMask, "", 1}}, base...),
+		},
+		// Make sure the original mask is overridden
+		{
+			append(ACL{{TagMask, "", 7}}, base...),
+			[]Entry{{TagUser, "0", 4}, {TagGroup, "0", 2}},
+			append(ACL{{TagUser, "0", 4}, {TagGroup, "0", 2}, {TagMask, "", 6}}, base...),
+		},
+		// Make sure TagUser or TagGroup in original is used
+		// in calculating new mask
+		{
+			append(ACL{{TagUser, "0", 4}, {TagMask, "", 0}}, base...),
+			[]Entry{{TagGroup, "0", 2}},
+			append(ACL{{TagUser, "0", 4}, {TagGroup, "0", 2}, {TagMask, "", 6}}, base...),
+		},
+		// Make sure TagUser or TagGroup in original is NOT used
+		// in calculating new mask if it's overwritten
+		{
+			append(ACL{{TagUser, "0", 7}, {TagMask, "", 0}}, base...),
+			[]Entry{{TagUser, "0", 4}, {TagGroup, "0", 2}},
+			append(ACL{{TagUser, "0", 4}, {TagGroup, "0", 2}, {TagMask, "", 6}}, base...),
+		},
+	}
+
+	for _, c := range testCases {
+		err := Set(f, c.Before)
+		mustNotError(t, err)
+		err = Add(f, c.Add...)
+		mustNotError(t, err)
+		acl, err := Get(f)
+
+		m1 := make(map[Entry]bool)
+		m2 := make(map[Entry]bool)
+		for _, e := range acl {
+			m1[e] = true
+		}
+		for _, e := range c.Afer {
+			m2[e] = true
+		}
+
+		if !reflect.DeepEqual(m1, m2) {
+			t.Errorf("unexpected ACL: want %v; got %v", c.Afer, acl)
+		}
+	}
+}
+
 var (
 	userObj  = Entry{Tag: TagUserObj}
 	groupObj = Entry{Tag: TagGroupObj}
