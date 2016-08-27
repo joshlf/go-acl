@@ -5,7 +5,9 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -17,9 +19,22 @@ func mustMakeTempFile(t *testing.T) string {
 	return f.Name()
 }
 
+func mustMakeTempDir(t *testing.T) string {
+	f, err := ioutil.TempDir("", "acl")
+	if err != nil {
+		t.Fatalf("create temp dir: %v", err)
+	}
+	return f
+}
+
 func mustNotError(t *testing.T, err error) {
 	if err != nil {
-		t.Fatal(err)
+		_, file, line, ok := runtime.Caller(1)
+		if !ok {
+			t.Fatalf("unknown file/line: %v", err)
+		}
+		file = filepath.Base(file)
+		t.Fatalf("%v:%v: %v", file, line, err)
 	}
 }
 
@@ -28,9 +43,17 @@ func TestGet(t *testing.T) {
 	defer os.Remove(f)
 	_, err := Get(f)
 	mustNotError(t, err)
+
+	d := mustMakeTempDir(t)
+	defer os.Remove(d)
+	_, err = GetDefault(d)
+	mustNotError(t, err)
 }
 
 func TestSet(t *testing.T) {
+	/*
+		Access ACL
+	*/
 	f := mustMakeTempFile(t)
 	defer os.Remove(f)
 	acl, err := Get(f)
@@ -44,6 +67,20 @@ func TestSet(t *testing.T) {
 	mustNotError(t, err)
 	if !reflect.DeepEqual(acl, acl2) {
 		t.Errorf("unexpected ACL: want %v; got %v", acl, acl2)
+	}
+
+	/*
+		Default ACL
+	*/
+	d := mustMakeTempDir(t)
+	defer os.Remove(d)
+	// reuse the acl from above since we know it's valid
+	err = SetDefault(d, acl)
+	mustNotError(t, err)
+	acl2, err = GetDefault(d)
+	mustNotError(t, err)
+	if !reflect.DeepEqual(acl, acl2) {
+		t.Errorf("unexpected default ACL: want %v; got %v", acl, acl2)
 	}
 }
 
@@ -80,12 +117,15 @@ func TestAdd(t *testing.T) {
 			[]Entry{{TagUser, "0", 4}, {TagGroup, "0", 2}},
 			append(ACL{{TagUser, "0", 4}, {TagGroup, "0", 2}, {TagMask, "", 6}}, base...),
 		},
-		// Make sure TagUser or TagGroup in original is used
+		// Make sure TagUser, TagGroup, or TagGroupObj in original is used
 		// in calculating new mask
 		{
 			append(ACL{{TagUser, "0", 4}, {TagMask, "", 0}}, base...),
-			[]Entry{{TagGroup, "0", 2}},
-			append(ACL{{TagUser, "0", 4}, {TagGroup, "0", 2}, {TagMask, "", 6}}, base...),
+			[]Entry{{TagGroup, "0", 2}, {TagGroupObj, "", 1}},
+			ACL{{TagUser, "0", 4}, {TagGroup, "0", 2}, {TagMask, "", 7},
+				{TagUserObj, "", 7},
+				{TagGroupObj, "", 1},
+				{TagOther, "", 0}},
 		},
 		// Make sure TagUser or TagGroup in original is NOT used
 		// in calculating new mask if it's overwritten
@@ -96,12 +136,13 @@ func TestAdd(t *testing.T) {
 		},
 	}
 
-	for _, c := range testCases {
+	for i, c := range testCases {
 		err := Set(f, c.Before)
 		mustNotError(t, err)
 		err = Add(f, c.Add...)
 		mustNotError(t, err)
 		acl, err := Get(f)
+		mustNotError(t, err)
 
 		m1 := make(map[Entry]bool)
 		m2 := make(map[Entry]bool)
@@ -113,8 +154,40 @@ func TestAdd(t *testing.T) {
 		}
 
 		if !reflect.DeepEqual(m1, m2) {
-			t.Errorf("unexpected ACL: want %v; got %v", c.Afer, acl)
+			t.Errorf("case %v: unexpected ACL: want %v; got %v", i, c.Afer, acl)
 		}
+	}
+}
+
+func TestDefault(t *testing.T) {
+	d := mustMakeTempDir(t)
+	defer os.RemoveAll(d)
+	// Set default ACL to no permissions, which is pretty much
+	// guaranteed not to be the system-wide default.
+	// That way we know it's not a fluke if that's the ACL
+	// on a newly-created file.
+	dacl := ACL{Entry{Tag: TagUserObj}, Entry{Tag: TagUser, Qualifier: "0"},
+		Entry{Tag: TagGroupObj}, Entry{Tag: TagGroup, Qualifier: "0"},
+		Entry{Tag: TagMask}, Entry{Tag: TagOther}}
+	err := SetDefault(d, dacl)
+	mustNotError(t, err)
+
+	_, err = os.Create(filepath.Join(d, "file"))
+	mustNotError(t, err)
+	acl, err := Get(filepath.Join(d, "file"))
+	mustNotError(t, err)
+	if !reflect.DeepEqual(dacl, acl) {
+		t.Errorf("access ACL does not match parent's default ACL: got %v; want %v",
+			acl, dacl)
+	}
+
+	err = os.Mkdir(filepath.Join(d, "dir"), 0666)
+	mustNotError(t, err)
+	dacl2, err := GetDefault(filepath.Join(d, "dir"))
+	mustNotError(t, err)
+	if !reflect.DeepEqual(dacl, dacl2) {
+		t.Errorf("default ACL does not match parent's default ACL: got %v; want %v",
+			dacl2, dacl)
 	}
 }
 
@@ -259,7 +332,7 @@ func TestUnix(t *testing.T) {
 	}
 }
 
-func ExamplePrint() {
+func ExampleString() {
 	acl := ACL{
 		{Tag: TagUserObj, Perms: 7},
 		{Tag: TagGroupObj, Perms: 6},

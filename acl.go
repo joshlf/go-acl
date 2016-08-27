@@ -2,18 +2,9 @@
 // manipulation of access control lists (ACLs).
 // See the acl manpage for details: http://linux.die.net/man/5/acl
 //
-// This package links against libacl. By default,
-// it links statically, as libacl is not installed
-// on some systems. To have it link dynamically,
-// build with the "acl_link_dynamic" tag.
-//
 // Currently, only Linux is supported. On systems which
 // are not supported, all calls will return the error
 // syscall.ENOTSUP.
-//
-// Note that cgo is required. When cross-compiling,
-// cgo cross-compilation support is required, and
-// the environment variable CGO_ENABLED=1 must be set.
 package acl
 
 import (
@@ -313,6 +304,11 @@ func SetDefault(path string, acl ACL) error {
 	return setDefault(path, acl)
 }
 
+// TODO(joshlf): It seems as though the mask also
+// affects entries with the tag TagGroupObj, so
+// when calculating the new mask, its bits should
+// be taken into account as well.
+
 // Add adds the given entries to the ACL on path.
 // Any matching entries that exist on the file
 // will be overwritten. Two entries match if they
@@ -327,7 +323,7 @@ func SetDefault(path string, acl ACL) error {
 // entry, a mask entry is added. This entry's
 // permissions are the union of all permissions
 // affected by the entry (namely, all entries with
-// the tags TagUser or TagGroup).
+// the tags TagUser, TagGroup, or TagGroupObj).
 func Add(path string, entries ...Entry) error {
 	old, err := get(path)
 	if err != nil {
@@ -384,7 +380,7 @@ func Add(path string, entries ...Entry) error {
 		var mperms os.FileMode
 		for _, e := range m {
 			switch e.Tag {
-			case TagUser, TagGroup:
+			case TagUser, TagGroup, TagGroupObj:
 				mperms |= e.Perms
 			}
 		}
