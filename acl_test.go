@@ -2,69 +2,42 @@ package acl
 
 import (
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"testing"
+
+	"github.com/joshlf/testutil"
 )
 
-func mustMakeTempFile(t *testing.T) string {
-	f, err := ioutil.TempFile("", "acl")
-	if err != nil {
-		t.Fatalf("create temp file: %v", err)
-	}
-	return f.Name()
-}
-
-func mustMakeTempDir(t *testing.T) string {
-	f, err := ioutil.TempDir("", "acl")
-	if err != nil {
-		t.Fatalf("create temp dir: %v", err)
-	}
-	return f
-}
-
-func mustNotError(t *testing.T, err error) {
-	if err != nil {
-		_, file, line, ok := runtime.Caller(1)
-		if !ok {
-			t.Fatalf("unknown file/line: %v", err)
-		}
-		file = filepath.Base(file)
-		t.Fatalf("%v:%v: %v", file, line, err)
-	}
-}
-
 func TestGet(t *testing.T) {
-	f := mustMakeTempFile(t)
+	f := testutil.MustTempFile(t, "", "acl").Name()
 	defer os.Remove(f)
 	_, err := Get(f)
-	mustNotError(t, err)
+	testutil.Must(t, err)
 
-	d := mustMakeTempDir(t)
+	d := testutil.MustTempDir(t, "", "acl")
 	defer os.Remove(d)
 	_, err = GetDefault(d)
-	mustNotError(t, err)
+	testutil.Must(t, err)
 }
 
 func TestSet(t *testing.T) {
 	/*
 		Access ACL
 	*/
-	f := mustMakeTempFile(t)
+	f := testutil.MustTempFile(t, "", "acl").Name()
 	defer os.Remove(f)
 	acl, err := Get(f)
-	mustNotError(t, err)
+	testutil.Must(t, err)
 	for i := range acl {
 		acl[i].Perms = (^acl[i].Perms) & 0x7 // Flip the rwx bits
 	}
 	err = Set(f, acl)
-	mustNotError(t, err)
+	testutil.Must(t, err)
 	acl2, err := Get(f)
-	mustNotError(t, err)
+	testutil.Must(t, err)
 	if !reflect.DeepEqual(acl, acl2) {
 		t.Errorf("unexpected ACL: want %v; got %v", acl, acl2)
 	}
@@ -72,20 +45,20 @@ func TestSet(t *testing.T) {
 	/*
 		Default ACL
 	*/
-	d := mustMakeTempDir(t)
+	d := testutil.MustTempDir(t, "", "acl")
 	defer os.Remove(d)
 	// reuse the acl from above since we know it's valid
 	err = SetDefault(d, acl)
-	mustNotError(t, err)
+	testutil.Must(t, err)
 	acl2, err = GetDefault(d)
-	mustNotError(t, err)
+	testutil.Must(t, err)
 	if !reflect.DeepEqual(acl, acl2) {
 		t.Errorf("unexpected default ACL: want %v; got %v", acl, acl2)
 	}
 }
 
 func TestAdd(t *testing.T) {
-	f := mustMakeTempFile(t)
+	f := testutil.MustTempFile(t, "", "acl").Name()
 	defer os.Remove(f)
 
 	base := ACL{
@@ -138,11 +111,11 @@ func TestAdd(t *testing.T) {
 
 	for i, c := range testCases {
 		err := Set(f, c.Before)
-		mustNotError(t, err)
+		testutil.Must(t, err)
 		err = Add(f, c.Add...)
-		mustNotError(t, err)
+		testutil.Must(t, err)
 		acl, err := Get(f)
-		mustNotError(t, err)
+		testutil.Must(t, err)
 
 		m1 := make(map[Entry]bool)
 		m2 := make(map[Entry]bool)
@@ -160,7 +133,7 @@ func TestAdd(t *testing.T) {
 }
 
 func TestDefault(t *testing.T) {
-	d := mustMakeTempDir(t)
+	d := testutil.MustTempDir(t, "", "acl")
 	defer os.RemoveAll(d)
 	// Set default ACL to no permissions, which is pretty much
 	// guaranteed not to be the system-wide default.
@@ -170,21 +143,21 @@ func TestDefault(t *testing.T) {
 		Entry{Tag: TagGroupObj}, Entry{Tag: TagGroup, Qualifier: "0"},
 		Entry{Tag: TagMask}, Entry{Tag: TagOther}}
 	err := SetDefault(d, dacl)
-	mustNotError(t, err)
+	testutil.Must(t, err)
 
 	_, err = os.Create(filepath.Join(d, "file"))
-	mustNotError(t, err)
+	testutil.Must(t, err)
 	acl, err := Get(filepath.Join(d, "file"))
-	mustNotError(t, err)
+	testutil.Must(t, err)
 	if !reflect.DeepEqual(dacl, acl) {
 		t.Errorf("access ACL does not match parent's default ACL: got %v; want %v",
 			acl, dacl)
 	}
 
 	err = os.Mkdir(filepath.Join(d, "dir"), 0666)
-	mustNotError(t, err)
+	testutil.Must(t, err)
 	dacl2, err := GetDefault(filepath.Join(d, "dir"))
-	mustNotError(t, err)
+	testutil.Must(t, err)
 	if !reflect.DeepEqual(dacl, dacl2) {
 		t.Errorf("default ACL does not match parent's default ACL: got %v; want %v",
 			dacl2, dacl)
@@ -226,10 +199,10 @@ var invalidACLs = []ACL{
 }
 
 func TestIsValid(t *testing.T) {
-	f := mustMakeTempFile(t)
+	f := testutil.MustTempFile(t, "", "acl").Name()
 	defer os.Remove(f)
 	acl, err := Get(f)
-	mustNotError(t, err)
+	testutil.Must(t, err)
 	if !acl.IsValid() {
 		t.Errorf("ACL reported invalid: %v", acl)
 	}
