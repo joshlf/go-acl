@@ -14,6 +14,7 @@
 package acl
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -286,10 +287,22 @@ func Get(path string) (ACL, error) {
 	return get(path)
 }
 
+// FGet retrieves the access ACL associated with an *os.File,
+// returning any error encountered.
+func FGet(f *os.File) (ACL, error) {
+	return fget(f)
+}
+
 // GetDefault retrieves the default ACL associated with path,
 // returning any error encountered.
 func GetDefault(path string) (ACL, error) {
 	return getDefault(path)
+}
+
+// FGetDefault retrieves the default ACL associated with an *os.File,
+// returning any error encountered.
+func FGetDefault(f *os.File) (ACL, error) {
+	return fgetDefault(f)
 }
 
 // Set sets the access ACL on path,
@@ -301,6 +314,15 @@ func Set(path string, acl ACL) error {
 	return set(path, acl)
 }
 
+// FSet sets the access ACL on an *os.File,
+// returning any error encountered.
+func FSet(f *os.File, acl ACL) error {
+	if !acl.IsValid() {
+		return fmt.Errorf("invalid ACL")
+	}
+	return fset(f, acl)
+}
+
 // SetDefault sets the default ACL on path,
 // returning any error encountered.
 func SetDefault(path string, acl ACL) error {
@@ -310,32 +332,16 @@ func SetDefault(path string, acl ACL) error {
 	return setDefault(path, acl)
 }
 
-// TODO(joshlf): It seems as though the mask also
-// affects entries with the tag TagGroupObj, so
-// when calculating the new mask, its bits should
-// be taken into account as well.
-
-// Add adds the given entries to the ACL on path.
-// Any matching entries that exist on the file
-// will be overwritten. Two entries match if they
-// have the same tag (and, if that tag is TagUser
-// or TagGroup, they also have the same qualifier).
-//
-// In order to ensure that the new ACL is valid,
-// after being calculated from the old ACL and the
-// new entries, the new ACL is modified as follows:
-// If the ACL includes named user or group entries
-// (with the tags TagUser or TagGroup) but no mask
-// entry, a mask entry is added. This entry's
-// permissions are the union of all permissions
-// affected by the entry (namely, all entries with
-// the tags TagUser, TagGroup, or TagGroupObj).
-func Add(path string, entries ...Entry) error {
-	old, err := get(path)
-	if err != nil {
-		return err
+// FSetDefault sets the default ACL on an *os.File,
+// returning any error encountered.
+func FSetDefault(f *os.File, acl ACL) error {
+	if !acl.IsValid() {
+		return fmt.Errorf("invalid ACL")
 	}
+	return fsetDefault(f, acl)
+}
 
+func add(oldACL ACL, entries ...Entry) (newACL ACL, err error) {
 	var (
 		addUserGroup bool // entries contains TagUser or TagGroup element
 		addMask      bool // entries contains TagMask element
@@ -357,7 +363,7 @@ func Add(path string, entries ...Entry) error {
 		Qualifier string
 	}
 	m := make(map[key]Entry)
-	for _, e := range old {
+	for _, e := range oldACL {
 		// we can rely on e.Qualifier to be the
 		// empty string if e.Tag is neither TagUser
 		// nor TagGroup (see the implementation of
@@ -393,12 +399,56 @@ func Add(path string, entries ...Entry) error {
 		m[key{Tag: TagMask}] = Entry{Tag: TagMask, Perms: mperms}
 	}
 
-	var new ACL
 	for _, e := range m {
-		new = append(new, e)
+		newACL = append(newACL, e)
 	}
-	if !new.IsValid() {
-		return fmt.Errorf("Add results in invalid ACL")
+	if !newACL.IsValid() {
+		return newACL, errors.New("add results in invalid ACL")
 	}
-	return set(path, new)
+	return
+}
+
+// TODO(joshlf): It seems as though the mask also
+// affects entries with the tag TagGroupObj, so
+// when calculating the new mask, its bits should
+// be taken into account as well.
+
+// Add adds the given entries to the ACL on path.
+// Any matching entries that exist on the file
+// will be overwritten. Two entries match if they
+// have the same tag (and, if that tag is TagUser
+// or TagGroup, they also have the same qualifier).
+//
+// In order to ensure that the new ACL is valid,
+// after being calculated from the old ACL and the
+// new entries, the new ACL is modified as follows:
+// If the ACL includes named user or group entries
+// (with the tags TagUser or TagGroup) but no mask
+// entry, a mask entry is added. This entry's
+// permissions are the union of all permissions
+// affected by the entry (namely, all entries with
+// the tags TagUser, TagGroup, or TagGroupObj).
+func Add(path string, entries ...Entry) error {
+	oldACL, err := get(path)
+	if err != nil {
+		return err
+	}
+	newACL, err := add(oldACL, entries...)
+	if err != nil {
+		return err
+	}
+	return set(path, newACL)
+}
+
+// FAdd adds the given entries to the ACL like Add, but on an *os.File
+func FAdd(f *os.File, entries ...Entry) error {
+	oldACL, err := fget(f)
+	if err != nil {
+		return err
+	}
+	newACL, err := add(oldACL, entries...)
+	if err != nil {
+		return err
+	}
+	return fset(f, newACL)
 }

@@ -9,6 +9,7 @@
 package acl
 
 import (
+	"os"
 	"syscall"
 )
 
@@ -31,7 +32,15 @@ func get(path string) (ACL, error) {
 	return nil, syscall.ENOTSUP
 }
 
+func fget(f *os.File) (ACL, error) {
+	return nil, syscall.ENOTSUP
+}
+
 func getDefault(path string) (ACL, error) {
+	return nil, syscall.ENOTSUP
+}
+
+func fgetDefault(f *os.File) (ACL, error) {
 	return nil, syscall.ENOTSUP
 }
 
@@ -39,6 +48,14 @@ func set(path string, acl ACL) error {
 	return syscall.ENOTSUP
 }
 
+func fset(f *os.File, acl ACL) error {
+	return syscall.ENOTSUP
+}
+
 func setDefault(path string, acl ACL) error {
+	return syscall.ENOTSUP
+}
+
+func fsetDefault(f *os.File, acl ACL) error {
 	return syscall.ENOTSUP
 }

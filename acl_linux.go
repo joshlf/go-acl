@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 /*
@@ -41,20 +43,74 @@ const (
 	aclUndefinedID = math.MaxUint32 // defined in sys/acl.h
 )
 
-func get(path string) (ACL, error) {
-	return getType(path, aclEAAccess)
+const defaultbuflen = 64
+
+type fileObj interface {
+	Getxattr(attr string, dest []byte) (int, error)
+	Setxattr(attr string, dest []byte, flags int) error
+	Stat() (os.FileInfo, error)
 }
 
-func getDefault(path string) (ACL, error) {
-	return getType(path, aclEADefault)
+type path string
+
+func (p path) Getxattr(attr string, dest []byte) (int, error) {
+	return syscall.Getxattr(string(p), attr, dest)
 }
 
-func set(path string, acl ACL) error {
-	return setType(path, aclEAAccess, acl)
+func (p path) Setxattr(attr string, dest []byte, flags int) error {
+	return syscall.Setxattr(string(p), attr, dest, flags)
 }
 
-func setDefault(path string, acl ACL) error {
-	return setType(path, aclEADefault, acl)
+func (p path) Stat() (os.FileInfo, error) {
+	return os.Stat(string(p))
+}
+
+type file struct {
+	*os.File
+}
+
+func (f file) Getxattr(attr string, dest []byte) (int, error) {
+	return unix.Fgetxattr(int(f.Fd()), attr, dest)
+}
+
+func (f file) Setxattr(attr string, dest []byte, flags int) error {
+	return unix.Fsetxattr(int(f.Fd()), attr, dest, flags)
+}
+
+func (f file) Stat() (os.FileInfo, error) {
+	return f.File.Stat()
+}
+
+func get(p string) (ACL, error) {
+	return getType(path(p), aclEAAccess)
+}
+
+func fget(f *os.File) (ACL, error) {
+	return getType(file{f}, aclEAAccess)
+}
+
+func getDefault(p string) (ACL, error) {
+	return getType(path(p), aclEADefault)
+}
+
+func fgetDefault(f *os.File) (ACL, error) {
+	return getType(file{f}, aclEADefault)
+}
+
+func set(p string, acl ACL) error {
+	return setType(path(p), aclEAAccess, acl)
+}
+
+func fset(f *os.File, acl ACL) error {
+	return setType(file{f}, aclEAAccess, acl)
+}
+
+func setDefault(p string, acl ACL) error {
+	return setType(path(p), aclEADefault, acl)
+}
+
+func fsetDefault(f *os.File, acl ACL) error {
+	return setType(file{f}, aclEADefault, acl)
 }
 
 func xattrFromACL(acl ACL) (xattr []byte, err error) {
@@ -147,23 +203,19 @@ func aclFromXattr(xattr []byte) (acl ACL, err error) {
 	return acl, nil
 }
 
-const (
-	defaultbuflen = 64
-)
-
 // based on libacl's acl_get_file
-func getType(path, attr string) (ACL, error) {
+func getType(f fileObj, attr string) (ACL, error) {
 	buf := bufpool.Get().([]byte)
 	defer func() { bufpool.Put(buf) }()
 
-	sz, err := syscall.Getxattr(path, attr, buf)
+	sz, err := f.Getxattr(attr, buf)
 	if sz == -1 && err == syscall.ERANGE {
-		sz, err = syscall.Getxattr(path, attr, nil)
+		sz, err = f.Getxattr(attr, nil)
 		if sz <= 0 {
 			return nil, err
 		}
 		buf = make([]byte, sz)
-		sz, err = syscall.Getxattr(path, attr, buf)
+		sz, err = f.Getxattr(attr, buf)
 	}
 
 	switch {
@@ -172,7 +224,7 @@ func getType(path, attr string) (ACL, error) {
 	case err == syscall.ENODATA:
 		// TODO(joshlf): acl_get_file also checks for ENOATTR,
 		// but it's not defined in syscall?
-		fi, err := os.Stat(path)
+		fi, err := f.Stat()
 		if err != nil {
 			return nil, err
 		}
@@ -190,9 +242,9 @@ func getType(path, attr string) (ACL, error) {
 }
 
 // based on libacl's acl_set_file
-func setType(path, attr string, acl ACL) error {
+func setType(f fileObj, attr string, acl ACL) error {
 	if attr == aclEADefault {
-		fi, err := os.Stat(path)
+		fi, err := f.Stat()
 		if err != nil {
 			return err
 		}
@@ -207,7 +259,7 @@ func setType(path, attr string, acl ACL) error {
 	if err != nil {
 		return err
 	}
-	return syscall.Setxattr(path, attr, xattr, 0)
+	return f.Setxattr(attr, xattr, 0)
 }
 
 var bufpool = sync.Pool{
