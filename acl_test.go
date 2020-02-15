@@ -29,6 +29,28 @@ func TestGet(t *testing.T) {
 	testutil.Must(t, err)
 }
 
+func TestFGet(t *testing.T) {
+	f := testutil.MustTempFile(t, "", "acl")
+	defer func() {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+	}()
+	_, err := FGet(f)
+	testutil.Must(t, err)
+
+	d := testutil.MustTempDir(t, "", "acl")
+	defer func() {
+		_ = os.Remove(d)
+	}()
+	dir, err := os.Open(d)
+	defer func() {
+		_ = dir.Close()
+	}()
+	testutil.Must(t, err)
+	_, err = FGetDefault(dir)
+	testutil.Must(t, err)
+}
+
 func TestSet(t *testing.T) {
 	/*
 		Access ACL
@@ -63,17 +85,50 @@ func TestSet(t *testing.T) {
 	}
 }
 
-func TestAdd(t *testing.T) {
-	f := testutil.MustTempFile(t, "", "acl").Name()
-	defer os.Remove(f)
+func TestFSet(t *testing.T) {
+	f := testutil.MustTempFile(t, "", "acl")
+	defer func() {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+	}()
+	acl, err := FGet(f)
+	testutil.Must(t, err)
+	for i := range acl {
+		acl[i].Perms = (^acl[i].Perms) & 0x7
+	}
+	err = FSet(f, acl)
+	testutil.Must(t, err)
+	acl2, err := FGet(f)
+	testutil.Must(t, err)
+	if !reflect.DeepEqual(acl, acl2) {
+		t.Errorf("unexpected ACL: want %v; got %v", acl, acl2)
+	}
 
-	base := ACL{
+	d := testutil.MustTempDir(t, "", "acl")
+	defer func() {
+		_ = os.Remove(d)
+	}()
+	dir, err := os.Open(d)
+	defer func() {
+		_ = dir.Close()
+	}()
+	err = FSetDefault(dir, acl)
+	testutil.Must(t, err)
+	acl2, err = FGetDefault(dir)
+	testutil.Must(t, err)
+	if !reflect.DeepEqual(acl, acl2) {
+		t.Errorf("unexpected default ACL: want %v; got %v", acl, acl2)
+	}
+}
+
+var (
+	base = ACL{
 		{TagUserObj, "", 7},
 		{TagGroupObj, "", 0},
 		{TagOther, "", 0},
 	}
 
-	testCases := []struct {
+	addTestCases = []struct {
 		Before ACL
 		Add    []Entry
 		Afer   ACL
@@ -114,13 +169,48 @@ func TestAdd(t *testing.T) {
 			append(ACL{{TagUser, "0", 4}, {TagGroup, "0", 2}, {TagMask, "", 6}}, base...),
 		},
 	}
+)
 
-	for i, c := range testCases {
+func TestAdd(t *testing.T) {
+	f := testutil.MustTempFile(t, "", "acl").Name()
+	defer os.Remove(f)
+
+	for i, c := range addTestCases {
 		err := Set(f, c.Before)
 		testutil.Must(t, err)
 		err = Add(f, c.Add...)
 		testutil.Must(t, err)
 		acl, err := Get(f)
+		testutil.Must(t, err)
+
+		m1 := make(map[Entry]bool)
+		m2 := make(map[Entry]bool)
+		for _, e := range acl {
+			m1[e] = true
+		}
+		for _, e := range c.Afer {
+			m2[e] = true
+		}
+
+		if !reflect.DeepEqual(m1, m2) {
+			t.Errorf("case %v: unexpected ACL: want %v; got %v", i, c.Afer, acl)
+		}
+	}
+}
+
+func TestFAdd(t *testing.T) {
+	f := testutil.MustTempFile(t, "", "acl")
+	defer func() {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+	}()
+
+	for i, c := range addTestCases {
+		err := FSet(f, c.Before)
+		testutil.Must(t, err)
+		err = FAdd(f, c.Add...)
+		testutil.Must(t, err)
+		acl, err := FGet(f)
 		testutil.Must(t, err)
 
 		m1 := make(map[Entry]bool)

@@ -4,7 +4,7 @@
 // the MIT license (the LICENSE-MIT file) at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-// +build go1.7
+// +build go1.9
 
 package acl
 
